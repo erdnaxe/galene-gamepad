@@ -18,8 +18,11 @@ fn main() -> Result<()> {
     let client_id = uuid::Uuid::new_v4();
 
     let mut device = virtual_controller::setup()?;
+    let mut device_press_release = |type_: evdev::EventType, code: u16, value: i32, delay: u64| {
+        virtual_controller::press_release(&mut device, type_, code, value, delay)
+    };
     let mut socket = galene_client::connect(server, &client_id, group, username, password)?;
     loop {
-        galene_client::handle_message(&mut socket, &mut device)?
+        galene_client::handle_message(&mut socket, &mut device_press_release)?
     }
 }

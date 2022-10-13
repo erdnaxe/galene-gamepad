@@ -1,11 +1,8 @@
 use anyhow::Result;
-use evdev::uinput::VirtualDevice;
 use log::{debug, info, warn};
 use serde_json::json;
 use std::net::TcpStream;
-use tungstenite::stream::MaybeTlsStream;
-
-use crate::virtual_controller::press_release;
+use tungstenite::{stream::MaybeTlsStream, WebSocket};
 
 /// Create new WebSocket connection to Galene server then join a room
 pub fn connect(
@@ -14,7 +11,7 @@ pub fn connect(
     group: &str,
     username: &str,
     password: &str,
-) -> Result<tungstenite::WebSocket<MaybeTlsStream<TcpStream>>> {
+) -> Result<WebSocket<MaybeTlsStream<TcpStream>>> {
     // Connect to WebSocket
     let server = url::Url::parse(server)?;
     let (mut socket, _) = tungstenite::connect(server)?;
@@ -44,10 +41,15 @@ pub fn connect(
 }
 
 /// Handle incoming message from Galene WebSocket
-pub fn handle_message(
-    socket: &mut tungstenite::WebSocket<tungstenite::stream::MaybeTlsStream<std::net::TcpStream>>,
-    device: &mut VirtualDevice,
-) -> Result<()> {
+pub fn handle_message<F>(
+    socket: &mut WebSocket<MaybeTlsStream<TcpStream>>,
+    mut device_cb: F,
+) -> Result<()>
+where
+    F: FnMut(evdev::EventType, u16, i32, u64) -> std::io::Result<()>,
+{
+    use evdev::{AbsoluteAxisType, EventType, Key};
+
     let ws_msg = socket.read_message()?;
     let text_msg = ws_msg.to_text()?;
     let msg: serde_json::Value = serde_json::from_str(text_msg)?;
@@ -85,90 +87,18 @@ pub fn handle_message(
             // the same time
             // TODO: parse this mapping from a TOML file
             match value {
-                "z" => press_release(
-                    device,
-                    evdev::EventType::ABSOLUTE,
-                    evdev::AbsoluteAxisType::ABS_HAT0Y.0,
-                    -1,
-                    300,
-                )?,
-                "q" => press_release(
-                    device,
-                    evdev::EventType::ABSOLUTE,
-                    evdev::AbsoluteAxisType::ABS_HAT0X.0,
-                    -1,
-                    300,
-                )?,
-                "s" => press_release(
-                    device,
-                    evdev::EventType::ABSOLUTE,
-                    evdev::AbsoluteAxisType::ABS_HAT0Y.0,
-                    1,
-                    300,
-                )?,
-                "d" => press_release(
-                    device,
-                    evdev::EventType::ABSOLUTE,
-                    evdev::AbsoluteAxisType::ABS_HAT0X.0,
-                    1,
-                    300,
-                )?,
-                "a" => press_release(
-                    device,
-                    evdev::EventType::KEY,
-                    evdev::Key::BTN_SOUTH.code(),
-                    1,
-                    300,
-                )?,
-                "b" => press_release(
-                    device,
-                    evdev::EventType::KEY,
-                    evdev::Key::BTN_EAST.code(),
-                    1,
-                    300,
-                )?,
-                "x" => press_release(
-                    device,
-                    evdev::EventType::KEY,
-                    evdev::Key::BTN_NORTH.code(),
-                    1,
-                    300,
-                )?,
-                "y" => press_release(
-                    device,
-                    evdev::EventType::KEY,
-                    evdev::Key::BTN_WEST.code(),
-                    1,
-                    300,
-                )?,
-                "start" => press_release(
-                    device,
-                    evdev::EventType::KEY,
-                    evdev::Key::BTN_START.code(),
-                    1,
-                    300,
-                )?,
-                "select" => press_release(
-                    device,
-                    evdev::EventType::KEY,
-                    evdev::Key::BTN_SELECT.code(),
-                    1,
-                    300,
-                )?,
-                "tl" => press_release(
-                    device,
-                    evdev::EventType::KEY,
-                    evdev::Key::BTN_TL.code(),
-                    1,
-                    300,
-                )?,
-                "tr" => press_release(
-                    device,
-                    evdev::EventType::KEY,
-                    evdev::Key::BTN_TR.code(),
-                    1,
-                    300,
-                )?,
+                "z" => device_cb(EventType::ABSOLUTE, AbsoluteAxisType::ABS_HAT0Y.0, -1, 300)?,
+                "q" => device_cb(EventType::ABSOLUTE, AbsoluteAxisType::ABS_HAT0X.0, -1, 300)?,
+                "s" => device_cb(EventType::ABSOLUTE, AbsoluteAxisType::ABS_HAT0Y.0, 1, 300)?,
+                "d" => device_cb(EventType::ABSOLUTE, AbsoluteAxisType::ABS_HAT0X.0, 1, 300)?,
+                "a" => device_cb(EventType::KEY, Key::BTN_SOUTH.code(), 1, 300)?,
+                "b" => device_cb(EventType::KEY, Key::BTN_EAST.code(), 1, 300)?,
+                "x" => device_cb(EventType::KEY, Key::BTN_NORTH.code(), 1, 300)?,
+                "y" => device_cb(EventType::KEY, Key::BTN_WEST.code(), 1, 300)?,
+                "start" => device_cb(EventType::KEY, Key::BTN_START.code(), 1, 300)?,
+                "select" => device_cb(EventType::KEY, Key::BTN_SELECT.code(), 1, 300)?,
+                "tl" => device_cb(EventType::KEY, Key::BTN_TL.code(), 1, 300)?,
+                "tr" => device_cb(EventType::KEY, Key::BTN_TR.code(), 1, 300)?,
                 _ => {}
             }
         }
