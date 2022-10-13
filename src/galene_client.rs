@@ -1,6 +1,9 @@
+use anyhow::Result;
 use evdev::uinput::VirtualDevice;
 use log::{debug, info, warn};
 use serde_json::json;
+use std::net::TcpStream;
+use tungstenite::stream::MaybeTlsStream;
 
 use crate::virtual_controller::press_release;
 
@@ -11,12 +14,9 @@ pub fn connect(
     group: &str,
     username: &str,
     password: &str,
-) -> Result<
-    tungstenite::WebSocket<tungstenite::stream::MaybeTlsStream<std::net::TcpStream>>,
-    tungstenite::Error,
-> {
+) -> Result<tungstenite::WebSocket<MaybeTlsStream<TcpStream>>> {
     // Connect to WebSocket
-    let server = url::Url::parse(server).unwrap();
+    let server = url::Url::parse(server)?;
     let (mut socket, _) = tungstenite::connect(server)?;
 
     // Handshake with server
@@ -47,11 +47,11 @@ pub fn connect(
 pub fn handle_message(
     socket: &mut tungstenite::WebSocket<tungstenite::stream::MaybeTlsStream<std::net::TcpStream>>,
     device: &mut VirtualDevice,
-) {
-    let ws_msg = socket.read_message().expect("Error reading message");
-    let text_msg = ws_msg.to_text().unwrap();
-    let msg: serde_json::Value = serde_json::from_str(text_msg).expect("Error parsing JSON");
-    let msg_type = msg["type"].as_str().unwrap();
+) -> Result<()> {
+    let ws_msg = socket.read_message()?;
+    let text_msg = ws_msg.to_text()?;
+    let msg: serde_json::Value = serde_json::from_str(text_msg)?;
+    let msg_type = msg["type"].as_str().unwrap_or_default();
     match msg_type {
         "ping" => {
             // Need to answer pong to ping request to keep connection
@@ -62,15 +62,15 @@ pub fn handle_message(
         }
         "usermessage" => {
             // Server is sending us a message
-            let value = msg["value"].as_str().unwrap();
-            match msg["kind"].as_str().unwrap() {
+            let value = msg["value"].as_str().unwrap_or_default();
+            match msg["kind"].as_str().unwrap_or_default() {
                 "error" => panic!("Server returned error: {value}"),
                 _ => warn!("Ignoring unimplemented {msg_type} message: {msg:?}"),
             }
         }
         "joined" => {
             // Response to the group join request
-            match msg["kind"].as_str().unwrap() {
+            match msg["kind"].as_str().unwrap_or_default() {
                 "join" => debug!("Joined group"),
                 "change" => debug!("Group configuration changed"),
                 _ => panic!("Error joining group"),
@@ -78,7 +78,7 @@ pub fn handle_message(
         }
         "chat" => {
             // New chat message
-            let value = msg["value"].as_str().unwrap_or("").to_lowercase();
+            let value = msg["value"].as_str().unwrap_or_default().to_lowercase();
             let value = value.as_str();
             info!("Received: {value}");
             // TODO: if message has multiple letters, press multiple buttons at
@@ -91,96 +91,84 @@ pub fn handle_message(
                     evdev::AbsoluteAxisType::ABS_HAT0Y.0,
                     -1,
                     300,
-                )
-                .unwrap(),
+                )?,
                 "q" => press_release(
                     device,
                     evdev::EventType::ABSOLUTE,
                     evdev::AbsoluteAxisType::ABS_HAT0X.0,
                     -1,
                     300,
-                )
-                .unwrap(),
+                )?,
                 "s" => press_release(
                     device,
                     evdev::EventType::ABSOLUTE,
                     evdev::AbsoluteAxisType::ABS_HAT0Y.0,
                     1,
                     300,
-                )
-                .unwrap(),
+                )?,
                 "d" => press_release(
                     device,
                     evdev::EventType::ABSOLUTE,
                     evdev::AbsoluteAxisType::ABS_HAT0X.0,
                     1,
                     300,
-                )
-                .unwrap(),
+                )?,
                 "a" => press_release(
                     device,
                     evdev::EventType::KEY,
                     evdev::Key::BTN_SOUTH.code(),
                     1,
                     300,
-                )
-                .unwrap(),
+                )?,
                 "b" => press_release(
                     device,
                     evdev::EventType::KEY,
                     evdev::Key::BTN_EAST.code(),
                     1,
                     300,
-                )
-                .unwrap(),
+                )?,
                 "x" => press_release(
                     device,
                     evdev::EventType::KEY,
                     evdev::Key::BTN_NORTH.code(),
                     1,
                     300,
-                )
-                .unwrap(),
+                )?,
                 "y" => press_release(
                     device,
                     evdev::EventType::KEY,
                     evdev::Key::BTN_WEST.code(),
                     1,
                     300,
-                )
-                .unwrap(),
+                )?,
                 "start" => press_release(
                     device,
                     evdev::EventType::KEY,
                     evdev::Key::BTN_START.code(),
                     1,
                     300,
-                )
-                .unwrap(),
+                )?,
                 "select" => press_release(
                     device,
                     evdev::EventType::KEY,
                     evdev::Key::BTN_SELECT.code(),
                     1,
                     300,
-                )
-                .unwrap(),
+                )?,
                 "tl" => press_release(
                     device,
                     evdev::EventType::KEY,
                     evdev::Key::BTN_TL.code(),
                     1,
                     300,
-                )
-                .unwrap(),
+                )?,
                 "tr" => press_release(
                     device,
                     evdev::EventType::KEY,
                     evdev::Key::BTN_TR.code(),
                     1,
                     300,
-                )
-                .unwrap(),
+                )?,
                 _ => {}
             }
         }
@@ -192,4 +180,5 @@ pub fn handle_message(
             warn!("Ignoring unimplemented {msg_type} message: {msg:?}");
         }
     }
+    Ok(())
 }
