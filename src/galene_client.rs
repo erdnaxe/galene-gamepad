@@ -1,4 +1,4 @@
-use anyhow::Result;
+use anyhow::{bail, Result};
 use log::{debug, info, warn};
 use serde_json::json;
 use std::net::TcpStream;
@@ -66,7 +66,7 @@ where
             // Server is sending us a message
             let value = msg["value"].as_str().unwrap_or_default();
             match msg["kind"].as_str().unwrap_or_default() {
-                "error" => panic!("Server returned error: {value}"),
+                "error" => bail!("Server returned error: {value}"),
                 _ => warn!("Ignoring unimplemented {msg_type} message: {msg:?}"),
             }
         }
@@ -75,7 +75,7 @@ where
             match msg["kind"].as_str().unwrap_or_default() {
                 "join" => debug!("Joined group"),
                 "change" => debug!("Group configuration changed"),
-                _ => panic!("Error joining group"),
+                _ => bail!("Error joining group, please check group name, username and password."),
             }
         }
         "chat" => {

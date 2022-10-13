@@ -69,6 +69,7 @@ pub fn setup() -> std::io::Result<VirtualDevice> {
     Ok(device)
 }
 
+/// Press virtual button or axis for `delay` milliseconds
 pub fn press_release(
     device: &mut VirtualDevice,
     type_: evdev::EventType,
